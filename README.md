@@ -8,7 +8,7 @@
 **LavaVault**, Cloudflare'ın ünlü **LavaRand** mimarisinden esinlenerek geliştirilmiş, fiziksel ortamdan elde edilen rastgeleliği kriptografik işlemlerde kullanan bir **şifreleme ve güvenli parola üretim motorudur**.
 
 Sistem; lav lambası videoları ve canlı kamera görüntülerinden elde edilen fiziksel entropiyi işleyerek kriptografik olarak güçlü anahtarlar üretir. Bu anahtarlar, parola üretimi ve dosya şifreleme işlemlerinde kullanılabilir.
-<img width="1055" height="710" alt="image" src="https://github.com/user-attachments/assets/3f599efb-e64c-4a01-afc2-23af83dd5642" />
+<img width="905" height="620" alt="image" src="https://github.com/user-attachments/assets/3f599efb-e64c-4a01-afc2-23af83dd5642" />
 
 
 ---
