@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+*.pyc
+
+# Kişisel Kasa ve Güvenlik Dosyaları (ASLA YÜKLENMEMELİ)
+guvenli_kasa.json
+keys/*.key
+*.lavalock
+*.enc
+
+# IDE
+.vscode/
+.idea/
