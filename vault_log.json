@@ -1,0 +1,9 @@
+[
+    {
+        "timestamp": "2026-08-17 12:15:51",
+        "original_file": "C:\\Users\\SÜREYYA\\Desktop\\Lava_Key\\deneme.txt",
+        "encrypted_file": "C:\\Users\\SÜREYYA\\Desktop\\Lava_Key\\deneme.txt.enc",
+        "source_video": "videos\\video1.mp4",
+        "key_file": "C:\\Users\\SÜREYYA\\Desktop\\Lava_Key\\keys\\key_video1_20260817_121551.key"
+    }
+]
