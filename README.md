@@ -9,6 +9,7 @@
 
 Sistem; lav lambası videoları ve canlı kamera görüntülerinden elde edilen fiziksel entropiyi işleyerek kriptografik olarak güçlü anahtarlar üretir. Bu anahtarlar, parola üretimi ve dosya şifreleme işlemlerinde kullanılabilir.
 <img width="1005" height="520" alt="image" src="https://github.com/user-attachments/assets/3f599efb-e64c-4a01-afc2-23af83dd5642" />
+  Cloudflare LavaRand — Akışkan termodinamiği ve fiziksel kaostan gerçek rastgelelik (TRNG) elde etme ilham kaynağı.
 
 
 ---
