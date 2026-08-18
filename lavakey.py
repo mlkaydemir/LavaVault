@@ -43,7 +43,6 @@ LOCK_EXT = ".lavalock"
 os.makedirs(KEYS_DIR, exist_ok=True)
 os.makedirs(VIDEOS_DIR, exist_ok=True)
 
-# Karışabilecek karakterler (i/l/I/O/0/1 gibi) elenmiş, okunabilir parola seti
 PASSWORD_CHARS = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$%^&*()-_=+"
 
 BANNER = """[bold magenta]
@@ -72,7 +71,9 @@ def save_vault(data: dict):
         json.dump(data, f, indent=4, ensure_ascii=False)
 
 
-
+# ----------------------------------------------------------------------
+# Fiziksel Entropi Toplama Katmanı
+# ----------------------------------------------------------------------
 
 def get_entropy_from_videos() -> tuple[bytes, list]:
     video_list = sorted(glob.glob(os.path.join(VIDEOS_DIR, "*.mp4")) + glob.glob(os.path.join(VIDEOS_DIR, "*.mov")))
@@ -151,7 +152,7 @@ def get_entropy_from_camera() -> tuple[bytes, list]:
         total_pixels_processed += roi.size
 
         kalan_sure = max(0.0, 5.0 - elapsed)
-        cv2.putText(frame, f"LAVAKEY LIVE ENTROPY STREAM", (20, 35), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+        cv2.putText(frame, "LAVAKEY LIVE ENTROPY STREAM", (20, 35), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
         cv2.putText(frame, f"Kalan Sure: {kalan_sure:.1f}s | Kare: {frame_count}", (20, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
         cv2.putText(frame, f"Islenen Piksel: {total_pixels_processed:,}", (20, 105), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 100, 0), 2)
         cv2.rectangle(frame, (int(w*0.25), int(h*0.2)), (int(w*0.75), int(h*0.8)), (0, 0, 255), 2)
@@ -169,7 +170,6 @@ def get_entropy_from_camera() -> tuple[bytes, list]:
 
 
 def acquire_entropy() -> tuple[bytes, list]:
-    """Ham entropi tohumunu (henüz türetilmemiş) ve kaynak listesini döndürür."""
     console.print("\n[bold cyan]Entropi Kaynağını Seçin:[/bold cyan]")
     console.print("  [1] [green]Lav Videoları Havuzu (Tüm Videolar)[/green]")
     console.print("  [2] [yellow]Canlı Web Kamerası (5sn Canlı Önizlemeli)[/yellow]")
@@ -181,36 +181,16 @@ def acquire_entropy() -> tuple[bytes, list]:
 
 
 # ----------------------------------------------------------------------
-# Bağlama özgü anahtar türetme (KRİTİK DÜZELTME)
+# Bağlama özgü anahtar türetme
 # ----------------------------------------------------------------------
 
 def make_context(*parts: str) -> str:
-    """Bir türetme işlemine özgü, tekrarlanamaz bir bağlam string'i üretir.
-
-    Sabit parçalar (örn. 'password', servis adı) + o anki zaman damgası
-    + kriptografik olarak rastgele bir nonce birleştirilir. Nonce,
-    aynı saniye içinde iki türetme yapılsa bile (ya da sistem saati
-    geri alınsa bile) bağlamın asla tekrar etmemesini garanti eder.
-    """
     nonce = os.urandom(8).hex()
     timestamp = datetime.now().isoformat()
     return ":".join([*parts, timestamp, nonce])
 
 
 def derive_context_key(raw_seed: bytes, context: str, length: int = 32) -> bytes:
-    """Ham entropi tohumundan, VERİLEN BAĞLAMA özgü bir anahtar türetir.
-
-    Neden gerekli: `raw_seed` aynı video havuzundan geldiği için sabit
-    kalabilir (videolar değişmediği sürece). Bağlam (context) olmadan
-    HKDF'ye sadece raw_seed verirseniz, iki farklı servis/dosya için
-    yapılan türetmeler BİREBİR AYNI anahtarı üretir. `info` parametresine
-    bağlamı koyarak bu sorunu çözüyoruz: aynı ham tohumdan istediğiniz
-    kadar anahtar türetebilirsiniz, hepsi birbirinden bağımsız görünür.
-
-    Not: `cryptography` kütüphanesindeki HKDF nesneleri sadece bir kez
-    .derive() çağrısı kabul eder — bu yüzden her çağrıda YENİ bir HKDF
-    nesnesi oluşturuyoruz.
-    """
     hkdf = HKDF(
         algorithm=hashes.SHA256(),
         length=length,
@@ -221,17 +201,8 @@ def derive_context_key(raw_seed: bytes, context: str, length: int = 32) -> bytes
 
 
 def generate_unbiased_password(key_material: bytes, length: int = 20) -> str:
-    """Modulo yanlılığı olmadan (reddetme örneklemesi ile) parola üretir.
-
-    Önceki sürümde `chars[b % len(chars)]` kullanılıyordu. 256, karakter
-    sayısına (70) tam bölünmediği için (256 % 70 = 46) ilk 46 karakterin
-    seçilme olasılığı diğer 24 karaktere göre hafifçe yüksekti — küçük
-    ama gereksiz bir istatistiksel önyargı. Burada, karakter setine tam
-    bölünmeyen fazlalık byte değerlerini eleyerek (rejection sampling)
-    tam düzgün (uniform) bir dağılım garanti ediyoruz.
-    """
     charset_size = len(PASSWORD_CHARS)
-    limit = (256 // charset_size) * charset_size  # 3*70=210 -> 210 ve üzeri byte'lar elenir
+    limit = (256 // charset_size) * charset_size
 
     result = []
     idx = 0
@@ -240,7 +211,6 @@ def generate_unbiased_password(key_material: bytes, length: int = 20) -> str:
 
     while len(result) < length:
         if idx >= len(material):
-          
             extend_counter += 1
             material = hashlib.sha256(material + extend_counter.to_bytes(4, "big")).digest()
             idx = 0
@@ -283,8 +253,6 @@ def dosya_tam_kilitle():
         console.print(f"[red][-] Hata: {e}[/red]")
         return
 
-    # Bağlam: bu dosyaya ve bu ana özgü — aynı video havuzuyla başka
-    # bir dosya kilitlenirse bile FARKLI bir anahtar üretilecek.
     context = make_context("file-lock", os.path.basename(fpath))
     key = derive_context_key(raw_seed, context, length=32)
     key_path = save_key(key)
@@ -318,7 +286,7 @@ def dosya_tam_kilitle():
         f"[bold green]Kilitli Dosya   :[/bold green] {os.path.basename(enc_path)}\n"
         f"[bold green]Kaynaklar       :[/bold green] {', '.join(sources)}\n"
         f"[bold green]Master Key      :[/bold green] {os.path.basename(key_path)}\n"
-        f"[bold yellow]Durum          :[/bold yellow] Orijinal açık dosya sistemden güvenle kaldırıldı.",
+        f"[bold yellow]Durum           :[/bold yellow] Orijinal açık dosya sistemden güvenle kaldırıldı.",
         title="[bold green]✓ DOSYA BAŞARIYLA KİLİTLENDİ[/bold green]",
         border_style="green"
     )
@@ -382,7 +350,6 @@ def dosya_tam_kilidini_ac():
         except Exception:
             pass
 
-        # Kilidi açılan dosyayı kasadan da temizle
         vault = load_vault()
         sifreli_dosyalar = vault.get("sifreli_dosyalar", {})
         silinecekler = [k for k in sifreli_dosyalar if os.path.basename(k) == os.path.basename(enc_path) or os.path.normpath(k) == os.path.normpath(enc_path)]
@@ -394,7 +361,7 @@ def dosya_tam_kilidini_ac():
             f"[bold green]Kurtarılan Dosya :[/bold green] {out_file}\n"
             f"[bold green]Eşleşen Anahtar  :[/bold green] {basarili_key}\n"
             f"[bold green]Doğrulama        :[/bold green] AES-GCM Mührü Başarılı\n"
-            f"[bold yellow]Kasa Durumu     :[/bold yellow] Dosya kaydı kasadan temizlendi.",
+            f"[bold yellow]Kasa Durumu      :[/bold yellow] Dosya kaydı kasadan temizlendi.",
             title="[bold green]✓ KİLİT AÇILDI: Dosya Başarıyla Kurtarıldı[/bold green]",
             border_style="green"
         )
@@ -419,7 +386,6 @@ def servis_parolasi_uret():
         console.print(f"[red][-] Hata: {e}[/red]")
         return
 
-   
     context = make_context("password", servis_adi)
     key_material = derive_context_key(raw_seed, context, length=64)
     parola = generate_unbiased_password(key_material, length=20)
