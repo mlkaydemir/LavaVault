@@ -20,7 +20,6 @@ from rich.table import Table
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn
 from rich import print as rprint
 
-
 if sys.platform == "win32":
     try:
         sys.stdout.reconfigure(encoding="utf-8")
@@ -43,13 +42,17 @@ LOCK_EXT = ".lavalock"
 os.makedirs(KEYS_DIR, exist_ok=True)
 os.makedirs(VIDEOS_DIR, exist_ok=True)
 
+# Karışabilecek karakterler (i/l/I/O/0/1 gibi) elenmiş, okunabilir parola seti
 PASSWORD_CHARS = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$%^&*()-_=+"
 
 BANNER = """[bold magenta]
-╦ ┌─┐┬ ┬┌─┐╦ ╦┌─┐┬ ┬┬ ┌┬┐
-║ ├─┤└┐┌┘├─┤╚╗╔╝├─┤│ ││ │
-╩═╝┴ ┴ └┘ ┴ ┴ ╚╝ ┴ ┴└─┘┴─┘┴
-[/bold magenta][cyan]True Physical Chaos Cryptographic Engine[/cyan]"""
+ _                    __     __            _ _   
+| |    __ ___   ____ _\ \   / /_ _ _   _| | |_ 
+| |   / _` \ \ / / _` |\ \ / / _` | | | | | __|
+| |__| (_| |\ V / (_| | \ V / (_| | |_| | | |_ 
+|_____\__,_| \_/ \__,_|  \_/ \__,_|\__,_|_|\__|
+[/bold magenta]
+[bold cyan]  🌋 True Physical Chaos Cryptographic Engine 🔐[/bold cyan]"""
 
 
 # ----------------------------------------------------------------------
@@ -72,7 +75,7 @@ def save_vault(data: dict):
 
 
 # ----------------------------------------------------------------------
-# Fiziksel Entropi Toplama Katmanı
+# Fiziksel Entropi Toplama Katmanı (Ham Tohum Döndürür)
 # ----------------------------------------------------------------------
 
 def get_entropy_from_videos() -> tuple[bytes, list]:
@@ -170,6 +173,7 @@ def get_entropy_from_camera() -> tuple[bytes, list]:
 
 
 def acquire_entropy() -> tuple[bytes, list]:
+    """Ham entropi tohumunu (henüz türetilmemiş) ve kaynak listesini döndürür."""
     console.print("\n[bold cyan]Entropi Kaynağını Seçin:[/bold cyan]")
     console.print("  [1] [green]Lav Videoları Havuzu (Tüm Videolar)[/green]")
     console.print("  [2] [yellow]Canlı Web Kamerası (5sn Canlı Önizlemeli)[/yellow]")
@@ -181,16 +185,18 @@ def acquire_entropy() -> tuple[bytes, list]:
 
 
 # ----------------------------------------------------------------------
-# Bağlama özgü anahtar türetme
+# Bağlama Özgü Anahtar Türetme ve Modulo Yanlılığı Düzeltmeleri
 # ----------------------------------------------------------------------
 
 def make_context(*parts: str) -> str:
+    """Bir türetme işlemine özgü, tekrarlanamaz bir bağlam string'i üretir."""
     nonce = os.urandom(8).hex()
     timestamp = datetime.now().isoformat()
     return ":".join([*parts, timestamp, nonce])
 
 
 def derive_context_key(raw_seed: bytes, context: str, length: int = 32) -> bytes:
+    """Ham entropi tohumundan, verilen bağlama özgü bağımsız bir anahtar türetir."""
     hkdf = HKDF(
         algorithm=hashes.SHA256(),
         length=length,
@@ -201,8 +207,9 @@ def derive_context_key(raw_seed: bytes, context: str, length: int = 32) -> bytes
 
 
 def generate_unbiased_password(key_material: bytes, length: int = 20) -> str:
+    """Modulo yanlılığı olmadan (reddetme örneklemesi ile) parola üretir."""
     charset_size = len(PASSWORD_CHARS)
-    limit = (256 // charset_size) * charset_size
+    limit = (256 // charset_size) * charset_size  # 210 ve üzeri bayt değerleri elenir
 
     result = []
     idx = 0
@@ -232,7 +239,7 @@ def save_key(key: bytes) -> str:
 
 
 # ----------------------------------------------------------------------
-# Dosya kilitleme / kilit açma
+# Dosya Kilitleme / Kilit Açma
 # ----------------------------------------------------------------------
 
 def dosya_tam_kilitle():
@@ -371,7 +378,7 @@ def dosya_tam_kilidini_ac():
 
 
 # ----------------------------------------------------------------------
-# Servis parolası üretimi / silme / listeleme
+# Servis Parolası Üretimi / Silme / Listeleme
 # ----------------------------------------------------------------------
 
 def servis_parolasi_uret():
@@ -493,7 +500,7 @@ def kasayi_listele():
 
 
 # ----------------------------------------------------------------------
-# Ana menü
+# Ana Menü
 # ----------------------------------------------------------------------
 
 def main():
