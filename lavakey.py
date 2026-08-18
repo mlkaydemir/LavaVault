@@ -5,9 +5,11 @@ import json
 import time
 import hashlib
 import cv2
+
 import tkinter as tk
 from tkinter import filedialog
 from datetime import datetime
+
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes
@@ -17,6 +19,15 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn
 from rich import print as rprint
+
+
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+        os.system("chcp 65001 >nul")
+    except Exception:
+        pass
 
 console = Console()
 
@@ -32,11 +43,19 @@ LOCK_EXT = ".lavalock"
 os.makedirs(KEYS_DIR, exist_ok=True)
 os.makedirs(VIDEOS_DIR, exist_ok=True)
 
+# Karışabilecek karakterler (i/l/I/O/0/1 gibi) elenmiş, okunabilir parola seti
+PASSWORD_CHARS = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$%^&*()-_=+"
+
 BANNER = """[bold magenta]
-╦  ┌─┐┬  ┬┌─┐╦  ╦┌─┐┬ ┬┬ ┌┬┐
-║  ├─┤└┐┌┘├─┤╚╗╔╝├─┤│ ││  │ 
-╩═╝┴ ┴ └┘ ┴ ┴ ╚╝ ┴ ┴└─┘┴─┘┴ 
+╦ ┌─┐┬ ┬┌─┐╦ ╦┌─┐┬ ┬┬ ┌┬┐
+║ ├─┤└┐┌┘├─┤╚╗╔╝├─┤│ ││ │
+╩═╝┴ ┴ └┘ ┴ ┴ ╚╝ ┴ ┴└─┘┴─┘┴
 [/bold magenta][cyan]True Physical Chaos Cryptographic Engine[/cyan]"""
+
+
+# ----------------------------------------------------------------------
+# Kasa (vault) okuma/yazma
+# ----------------------------------------------------------------------
 
 def load_vault() -> dict:
     if os.path.exists(VAULT_FILE):
@@ -47,9 +66,13 @@ def load_vault() -> dict:
             return {"parolalar": {}, "sifreli_dosyalar": {}}
     return {"parolalar": {}, "sifreli_dosyalar": {}}
 
+
 def save_vault(data: dict):
     with open(VAULT_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4, ensure_ascii=False)
+
+
+
 
 def get_entropy_from_videos() -> tuple[bytes, list]:
     video_list = sorted(glob.glob(os.path.join(VIDEOS_DIR, "*.mp4")) + glob.glob(os.path.join(VIDEOS_DIR, "*.mov")))
@@ -74,7 +97,7 @@ def get_entropy_from_videos() -> tuple[bytes, list]:
             if not cap.isOpened():
                 progress.advance(task)
                 continue
-            
+
             v_name = os.path.basename(v_path)
             used_videos.append(v_name)
             frames_from_video = 0
@@ -85,7 +108,7 @@ def get_entropy_from_videos() -> tuple[bytes, list]:
                     break
                 frames_from_video += 1
                 total_frames += 1
-                
+
                 if frames_from_video % 2 == 0:
                     h, w, _ = frame.shape
                     roi = frame[int(h*0.2):int(h*0.8), int(w*0.25):int(w*0.75)]
@@ -97,13 +120,8 @@ def get_entropy_from_videos() -> tuple[bytes, list]:
             time.sleep(0.05)
 
     raw_seed = hasher.digest()
-    hkdf = HKDF(
-        algorithm=hashes.SHA256(),
-        length=32,
-        salt=None,
-        info=b"lavakey-tui-core",
-    )
-    return hkdf.derive(raw_seed), used_videos
+    return raw_seed, used_videos
+
 
 def get_entropy_from_camera() -> tuple[bytes, list]:
     console.print("\n[yellow][*] Web kamerası açılıyor... 5 saniyelik foton gürültüsü toplanacak.[/yellow]")
@@ -128,7 +146,6 @@ def get_entropy_from_camera() -> tuple[bytes, list]:
         frame_count += 1
         h, w, _ = frame.shape
         roi = frame[int(h*0.2):int(h*0.8), int(w*0.25):int(w*0.75)]
-        
         hasher.update(roi.tobytes())
         hasher.update(frame_count.to_bytes(4, 'big'))
         total_pixels_processed += roi.size
@@ -138,8 +155,8 @@ def get_entropy_from_camera() -> tuple[bytes, list]:
         cv2.putText(frame, f"Kalan Sure: {kalan_sure:.1f}s | Kare: {frame_count}", (20, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
         cv2.putText(frame, f"Islenen Piksel: {total_pixels_processed:,}", (20, 105), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 100, 0), 2)
         cv2.rectangle(frame, (int(w*0.25), int(h*0.2)), (int(w*0.75), int(h*0.8)), (0, 0, 255), 2)
-
         cv2.imshow("LavaKey - Fiziksel Optik Entropi Yakalayici", frame)
+
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
 
@@ -147,25 +164,94 @@ def get_entropy_from_camera() -> tuple[bytes, list]:
     cv2.destroyAllWindows()
 
     raw_seed = hasher.digest()
-    hkdf = HKDF(
-        algorithm=hashes.SHA256(),
-        length=32,
-        salt=None,
-        info=b"lavakey-live-cam",
-    )
-    
     console.print(f"[green][+] Başarılı: {frame_count} kamera karesi ve {total_pixels_processed:,} ham piksel entropiye dönüştürüldü.[/green]")
-    return hkdf.derive(raw_seed), [f"Live Camera ({frame_count} Frames, {total_pixels_processed:,} Pixels)"]
+    return raw_seed, [f"Live Camera ({frame_count} Frames, {total_pixels_processed:,} Pixels)"]
+
 
 def acquire_entropy() -> tuple[bytes, list]:
+    """Ham entropi tohumunu (henüz türetilmemiş) ve kaynak listesini döndürür."""
     console.print("\n[bold cyan]Entropi Kaynağını Seçin:[/bold cyan]")
     console.print("  [1] [green]Lav Videoları Havuzu (Tüm Videolar)[/green]")
     console.print("  [2] [yellow]Canlı Web Kamerası (5sn Canlı Önizlemeli)[/yellow]")
-    
     sec = console.input("\n[bold white]Seçim (1/2, varsayılan 1): [/bold white]").strip()
+
     if sec == "2":
         return get_entropy_from_camera()
     return get_entropy_from_videos()
+
+
+# ----------------------------------------------------------------------
+# Bağlama özgü anahtar türetme (KRİTİK DÜZELTME)
+# ----------------------------------------------------------------------
+
+def make_context(*parts: str) -> str:
+    """Bir türetme işlemine özgü, tekrarlanamaz bir bağlam string'i üretir.
+
+    Sabit parçalar (örn. 'password', servis adı) + o anki zaman damgası
+    + kriptografik olarak rastgele bir nonce birleştirilir. Nonce,
+    aynı saniye içinde iki türetme yapılsa bile (ya da sistem saati
+    geri alınsa bile) bağlamın asla tekrar etmemesini garanti eder.
+    """
+    nonce = os.urandom(8).hex()
+    timestamp = datetime.now().isoformat()
+    return ":".join([*parts, timestamp, nonce])
+
+
+def derive_context_key(raw_seed: bytes, context: str, length: int = 32) -> bytes:
+    """Ham entropi tohumundan, VERİLEN BAĞLAMA özgü bir anahtar türetir.
+
+    Neden gerekli: `raw_seed` aynı video havuzundan geldiği için sabit
+    kalabilir (videolar değişmediği sürece). Bağlam (context) olmadan
+    HKDF'ye sadece raw_seed verirseniz, iki farklı servis/dosya için
+    yapılan türetmeler BİREBİR AYNI anahtarı üretir. `info` parametresine
+    bağlamı koyarak bu sorunu çözüyoruz: aynı ham tohumdan istediğiniz
+    kadar anahtar türetebilirsiniz, hepsi birbirinden bağımsız görünür.
+
+    Not: `cryptography` kütüphanesindeki HKDF nesneleri sadece bir kez
+    .derive() çağrısı kabul eder — bu yüzden her çağrıda YENİ bir HKDF
+    nesnesi oluşturuyoruz.
+    """
+    hkdf = HKDF(
+        algorithm=hashes.SHA256(),
+        length=length,
+        salt=None,
+        info=context.encode("utf-8"),
+    )
+    return hkdf.derive(raw_seed)
+
+
+def generate_unbiased_password(key_material: bytes, length: int = 20) -> str:
+    """Modulo yanlılığı olmadan (reddetme örneklemesi ile) parola üretir.
+
+    Önceki sürümde `chars[b % len(chars)]` kullanılıyordu. 256, karakter
+    sayısına (70) tam bölünmediği için (256 % 70 = 46) ilk 46 karakterin
+    seçilme olasılığı diğer 24 karaktere göre hafifçe yüksekti — küçük
+    ama gereksiz bir istatistiksel önyargı. Burada, karakter setine tam
+    bölünmeyen fazlalık byte değerlerini eleyerek (rejection sampling)
+    tam düzgün (uniform) bir dağılım garanti ediyoruz.
+    """
+    charset_size = len(PASSWORD_CHARS)
+    limit = (256 // charset_size) * charset_size  # 3*70=210 -> 210 ve üzeri byte'lar elenir
+
+    result = []
+    idx = 0
+    material = key_material
+    extend_counter = 0
+
+    while len(result) < length:
+        if idx >= len(material):
+          
+            extend_counter += 1
+            material = hashlib.sha256(material + extend_counter.to_bytes(4, "big")).digest()
+            idx = 0
+
+        b = material[idx]
+        idx += 1
+        if b < limit:
+            result.append(PASSWORD_CHARS[b % charset_size])
+
+    return "".join(result)
+
 
 def save_key(key: bytes) -> str:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -174,10 +260,14 @@ def save_key(key: bytes) -> str:
         f.write(key.hex())
     return os.path.abspath(key_path)
 
+
+# ----------------------------------------------------------------------
+# Dosya kilitleme / kilit açma
+# ----------------------------------------------------------------------
+
 def dosya_tam_kilitle():
     console.print("\n[bold yellow]Lütfen açılan pencereden kilitlemek istediğiniz dosyayı seçin...[/bold yellow]")
     fpath = filedialog.askopenfilename(title="Kilitlemek İstediğiniz Dosyayı Seçin")
-    
     if not fpath:
         console.print("[red][-] Dosya seçimi iptal edildi.[/red]")
         return
@@ -188,11 +278,15 @@ def dosya_tam_kilitle():
         return
 
     try:
-        key, sources = acquire_entropy()
+        raw_seed, sources = acquire_entropy()
     except Exception as e:
         console.print(f"[red][-] Hata: {e}[/red]")
         return
 
+    # Bağlam: bu dosyaya ve bu ana özgü — aynı video havuzuyla başka
+    # bir dosya kilitlenirse bile FARKLI bir anahtar üretilecek.
+    context = make_context("file-lock", os.path.basename(fpath))
+    key = derive_context_key(raw_seed, context, length=32)
     key_path = save_key(key)
 
     with open(fpath, "rb") as f:
@@ -221,14 +315,15 @@ def dosya_tam_kilitle():
     save_vault(vault)
 
     res_panel = Panel.fit(
-        f"[bold green]Kilitli Dosya :[/bold green] {os.path.basename(enc_path)}\n"
-        f"[bold green]Kaynaklar     :[/bold green] {', '.join(sources)}\n"
-        f"[bold green]Master Key    :[/bold green] {os.path.basename(key_path)}\n"
-        f"[bold yellow]Durum         :[/bold yellow] Orijinal açık dosya sistemden güvenle kaldırıldı.",
+        f"[bold green]Kilitli Dosya   :[/bold green] {os.path.basename(enc_path)}\n"
+        f"[bold green]Kaynaklar       :[/bold green] {', '.join(sources)}\n"
+        f"[bold green]Master Key      :[/bold green] {os.path.basename(key_path)}\n"
+        f"[bold yellow]Durum          :[/bold yellow] Orijinal açık dosya sistemden güvenle kaldırıldı.",
         title="[bold green]✓ DOSYA BAŞARIYLA KİLİTLENDİ[/bold green]",
         border_style="green"
     )
     console.print(res_panel)
+
 
 def dosya_tam_kilidini_ac():
     console.print("\n[bold yellow]Lütfen açılan pencereden kilidini açmak istediğiniz dosyayı seçin...[/bold yellow]")
@@ -236,7 +331,6 @@ def dosya_tam_kilidini_ac():
         title="Kilitli Dosyayı Seçin (.lavalock veya .enc)",
         filetypes=[("Tüm Dosyalar", "*.*"), ("LavaLock Dosyaları", f"*{LOCK_EXT}"), ("ENC Dosyaları", "*.enc")]
     )
-    
     if not enc_path:
         console.print("[red][-] Dosya seçilmedi.[/red]")
         return
@@ -265,7 +359,7 @@ def dosya_tam_kilidini_ac():
         return
 
     console.print(f"\n[cyan][*] keys/ klasöründeki {len(key_files)} adet anahtar sırayla deneniyor...[/cyan]")
-    
+
     basarili_key = None
     plaintext = None
 
@@ -273,7 +367,6 @@ def dosya_tam_kilidini_ac():
         try:
             with open(k_file, "r", encoding="utf-8") as f:
                 key = bytes.fromhex(f.read().strip())
-            
             aesgcm = AESGCM(key)
             plaintext = aesgcm.decrypt(nonce, ciphertext, None)
             basarili_key = os.path.basename(k_file)
@@ -284,7 +377,6 @@ def dosya_tam_kilidini_ac():
     if basarili_key and plaintext is not None:
         with open(out_file, "wb") as f:
             f.write(plaintext)
-
         try:
             os.remove(enc_path)
         except Exception:
@@ -302,13 +394,18 @@ def dosya_tam_kilidini_ac():
             f"[bold green]Kurtarılan Dosya :[/bold green] {out_file}\n"
             f"[bold green]Eşleşen Anahtar  :[/bold green] {basarili_key}\n"
             f"[bold green]Doğrulama        :[/bold green] AES-GCM Mührü Başarılı\n"
-            f"[bold yellow]Kasa Durumu      :[/bold yellow] Dosya kaydı kasadan temizlendi.",
+            f"[bold yellow]Kasa Durumu     :[/bold yellow] Dosya kaydı kasadan temizlendi.",
             title="[bold green]✓ KİLİT AÇILDI: Dosya Başarıyla Kurtarıldı[/bold green]",
             border_style="green"
         )
         console.print(res_panel)
     else:
         console.print("\n[bold red][-] HATA: Mevcut anahtarların hiçbiri bu dosyayı açamadı![/bold red]\n")
+
+
+# ----------------------------------------------------------------------
+# Servis parolası üretimi / silme / listeleme
+# ----------------------------------------------------------------------
 
 def servis_parolasi_uret():
     servis_adi = console.input("\n[bold white]Hesap / Servis Adı (Örn: Instagram, Wi-Fi, Banka, GitHub): [/bold white]").strip()
@@ -317,13 +414,15 @@ def servis_parolasi_uret():
         return
 
     try:
-        key, sources = acquire_entropy()
+        raw_seed, sources = acquire_entropy()
     except Exception as e:
         console.print(f"[red][-] Hata: {e}[/red]")
         return
 
-    chars = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$%^&*()-_=+"
-    parola = "".join(chars[b % len(chars)] for b in key[:24])
+   
+    context = make_context("password", servis_adi)
+    key_material = derive_context_key(raw_seed, context, length=64)
+    parola = generate_unbiased_password(key_material, length=20)
 
     vault = load_vault()
     vault["parolalar"][servis_adi] = {
@@ -334,13 +433,14 @@ def servis_parolasi_uret():
     save_vault(vault)
 
     res_panel = Panel.fit(
-        f"[bold cyan]Servis :[/bold cyan] {servis_adi}\n"
-        f"[bold green]Parola :[/bold green] [bold white]{parola}[/bold white]\n"
-        f"[bold magenta]Kaynak :[/bold magenta] {', '.join(sources)}",
+        f"[bold cyan]Servis  :[/bold cyan] {servis_adi}\n"
+        f"[bold green]Parola  :[/bold green] [bold white]{parola}[/bold white]\n"
+        f"[bold magenta]Kaynak  :[/bold magenta] {', '.join(sources)}",
         title="[bold green]✓ MASTER PAROLA ÜRETİLDİ[/bold green]",
         border_style="cyan"
     )
     console.print(res_panel)
+
 
 def servis_parolasi_sil():
     vault = load_vault()
@@ -390,6 +490,7 @@ def servis_parolasi_sil():
     else:
         console.print("[dim]Silme işlemi iptal edildi.[/dim]")
 
+
 def kasayi_listele():
     vault = load_vault()
     parolalar = vault.get("parolalar", {})
@@ -424,6 +525,11 @@ def kasayi_listele():
     console.print(d_table)
     console.print("\n")
 
+
+# ----------------------------------------------------------------------
+# Ana menü
+# ----------------------------------------------------------------------
+
 def main():
     while True:
         console.clear()
@@ -455,6 +561,7 @@ def main():
         elif secim == "6":
             console.print("[bold red]\nKasa kapatıldı ve hafıza temizlendi.[/bold red]\n")
             break
+
 
 if __name__ == "__main__":
     main()
